@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# 本地运行产物（不应提交）
+node_modules/
+*.log
+seen-history.json
+config.json
+
+# 编辑器
+.vscode/
+.idea/

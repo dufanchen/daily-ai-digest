@@ -34,6 +34,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const skillDir = join(scriptDir, '..');
 const PREPARE_SCRIPT = join(scriptDir, 'prepare-digest.js');
 const GITHUB_SCRIPT = join(scriptDir, 'fetch-github.js');
+const EXTRA_SCRIPT = join(scriptDir, 'fetch-extra.js');
 
 const TIMEZONE = process.env.DIGEST_TIMEZONE || 'Asia/Shanghai';
 
@@ -125,6 +126,20 @@ async function fetchGithubData() {
   }
 }
 
+// 抓额外资讯源（Hacker News Show HN / Product Hunt / Hugging Face Papers）。
+// 任一源失败都被 fetch-extra.js 内部隔离，这里整体失败也只是跳过，不阻断主流程。
+async function fetchExtraData() {
+  try {
+    const { stdout } = await execFileAsync('node', [EXTRA_SCRIPT], {
+      maxBuffer: 16 * 1024 * 1024
+    });
+    return JSON.parse(stdout);
+  } catch (err) {
+    console.error(`[daily-ai-digest] extra sources fetch failed (skipped): ${err.message}`);
+    return null;
+  }
+}
+
 function cleanTweetText(text) {
   if (!text) return '';
   return text
@@ -208,9 +223,15 @@ function buildGithubSection(github, marker) {
   if (!github || github.status !== 'ok') return '';
   const aiRising = github.aiRising || [];
   const frontierIdeas = github.frontierIdeas || [];
+  const vibeIdeas = github.vibeIdeas || [];
   const trendingAI = github.trendingAI || [];
   const trendingAll = github.trendingAll || [];
-  if (aiRising.length === 0 && frontierIdeas.length === 0 && trendingAll.length === 0) {
+  if (
+    aiRising.length === 0 &&
+    frontierIdeas.length === 0 &&
+    vibeIdeas.length === 0 &&
+    trendingAll.length === 0
+  ) {
     return '';
   }
   const lines = [`## GitHub 热门项目 / Hot Repos\n`];
@@ -219,6 +240,18 @@ function buildGithubSection(github, marker) {
     lines.push(`### 🧠 前沿思路（打开认知 · 非功能型）`);
     lines.push(`> Frontier ideas — new paradigms like memory layers, knowledge graphs, second brain, self-evolving agents\n`);
     for (const repo of frontierIdeas.slice(0, 8)) {
+      const lang = repo.language ? ` \`${repo.language}\`` : '';
+      const desc = repo.description ? ` — ${repo.description}` : '';
+      const tag = marker.tagIfNew(repo.fullName);
+      lines.push(`- **${repo.fullName}** ⭐${repo.stars} \`#${repo.topic}\`${lang}${tag}${desc}`);
+      lines.push(`  - ${repo.url}\n`);
+    }
+  }
+
+  if (vibeIdeas.length > 0) {
+    lines.push(`### 🛠️ Vibe Coding 灵感（独立开发者的成品型小项目）`);
+    lines.push(`> Vibe coding inspiration — small polished apps / boilerplates / AI products to spark your own builds\n`);
+    for (const repo of vibeIdeas.slice(0, 8)) {
       const lang = repo.language ? ` \`${repo.language}\`` : '';
       const desc = repo.description ? ` — ${repo.description}` : '';
       const tag = marker.tagIfNew(repo.fullName);
@@ -259,14 +292,61 @@ function buildGithubSection(github, marker) {
   return lines.length > 1 ? lines.join('\n') + '\n' : '';
 }
 
-function buildMarkdown(data, dateStr, github, marker) {
+function buildShowHNSection(extra, marker) {
+  const items = (extra && extra.showHN) || [];
+  if (items.length === 0) return '';
+  const lines = ['## 🟧 Hacker News · Show HN\n'];
+  lines.push('> 开发者首发小项目的主阵地 / Where builders launch their projects first\n');
+  for (const item of items) {
+    const tag = marker.tagIfNew(item.discussionUrl || item.url);
+    const heat = `▲${item.points} · 💬${item.comments}`;
+    lines.push(`- **${item.title}** (${heat})${tag}`);
+    lines.push(`  - 项目 / Project: ${item.url}`);
+    if (item.discussionUrl && item.discussionUrl !== item.url) {
+      lines.push(`  - 讨论 / Discussion: ${item.discussionUrl}`);
+    }
+    lines.push('');
+  }
+  return lines.length > 2 ? lines.join('\n') + '\n' : '';
+}
+
+function buildProductHuntSection(extra, marker) {
+  const items = (extra && extra.productHunt) || [];
+  if (items.length === 0) return '';
+  const lines = ['## 🚀 Product Hunt · 每日新品\n'];
+  lines.push("> 每天上线的新产品（含大量 AI / 独立开发者作品）/ Today's launches\n");
+  for (const item of items) {
+    const tag = marker.tagIfNew(item.url);
+    const desc = item.description ? ` — ${item.description}` : '';
+    lines.push(`- **${item.title}**${tag}${desc}`);
+    lines.push(`  - ${item.url}\n`);
+  }
+  return lines.length > 2 ? lines.join('\n') + '\n' : '';
+}
+
+function buildHfPapersSection(extra, marker) {
+  const items = (extra && extra.hfPapers) || [];
+  if (items.length === 0) return '';
+  const lines = ['## 📄 Hugging Face · Daily Papers\n'];
+  lines.push('> 当日精选论文（看新范式的源头）/ Curated papers of the day\n');
+  for (const item of items) {
+    const tag = marker.tagIfNew(item.url);
+    lines.push(`- **${item.title}**${tag}`);
+    lines.push(`  - HF: ${item.url}`);
+    if (item.arxivUrl) lines.push(`  - arXiv: ${item.arxivUrl}`);
+    lines.push('');
+  }
+  return lines.length > 2 ? lines.join('\n') + '\n' : '';
+}
+
+function buildMarkdown(data, dateStr, github, extra, marker) {
   const { stats = {}, x = [], podcasts = [], blogs = [] } = data;
 
   const header = [
     `# AI Builders Digest — ${dateStr}`,
     '',
     `> 每日 AI Builders 资讯 + GitHub 热门项目 · 中英双语`,
-    `> 本日数据：${stats.xBuilders || 0} 位 builder / ${stats.totalTweets || 0} 条推文 / ${stats.podcastEpisodes || 0} 个播客 / ${stats.blogPosts || 0} 篇博客${github && github.stats ? ` / GitHub ${github.stats.frontierCount || 0} 前沿 + ${github.stats.aiRisingCount || 0} 新星 + ${github.stats.trendingTotal || 0} trending` : ''}`,
+    `> 本日数据：${stats.xBuilders || 0} 位 builder / ${stats.totalTweets || 0} 条推文 / ${stats.podcastEpisodes || 0} 个播客 / ${stats.blogPosts || 0} 篇博客${github && github.stats ? ` / GitHub ${github.stats.frontierCount || 0} 前沿 + ${github.stats.vibeCount || 0} vibe + ${github.stats.aiRisingCount || 0} 新星 + ${github.stats.trendingTotal || 0} trending` : ''}${extra && extra.stats ? ` / ${extra.stats.showHNCount || 0} ShowHN + ${extra.stats.productHuntCount || 0} PH + ${extra.stats.hfPapersCount || 0} papers` : ''}`,
     `> 🆕 标记 = 相比往日首次出现的新内容`,
     `> Feed 生成时间 / Feed generated at: ${stats.feedGeneratedAt || 'N/A'}`,
     ''
@@ -276,7 +356,10 @@ function buildMarkdown(data, dateStr, github, marker) {
     buildTweetSection(x, marker),
     buildBlogSection(blogs, marker),
     buildPodcastSection(podcasts, marker),
-    buildGithubSection(github, marker)
+    buildGithubSection(github, marker),
+    buildShowHNSection(extra, marker),
+    buildProductHuntSection(extra, marker),
+    buildHfPapersSection(extra, marker)
   ].filter(Boolean);
 
   const footer = [
@@ -298,14 +381,15 @@ async function main() {
   const dateStr = todayString();
   await mkdir(OUTPUT_DIR, { recursive: true });
 
-  const [data, github, oldSeen] = await Promise.all([
+  const [data, github, extra, oldSeen] = await Promise.all([
     fetchDigestData(),
     fetchGithubData(),
+    fetchExtraData(),
     loadSeenHistory()
   ]);
 
   const marker = createMarker(oldSeen);
-  const markdown = buildMarkdown(data, dateStr, github, marker);
+  const markdown = buildMarkdown(data, dateStr, github, extra, marker);
 
   const outputPath = join(OUTPUT_DIR, `${dateStr}.md`);
   await writeFile(outputPath, markdown, 'utf-8');

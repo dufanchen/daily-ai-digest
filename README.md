@@ -1,10 +1,21 @@
 # daily-ai-digest · 每日 AI 资讯追踪 skill
 
-每天自动汇总 **AI builders 言论 + AI 播客 + GitHub 热门开源项目（含前沿思路）**，
-生成一份中英双语 Markdown，帮你第一时间窥见 AI 行业趋势。
+每天自动汇总 **AI builders 言论 + AI 播客 + GitHub 热门开源项目（含前沿思路 + Vibe Coding 灵感）
++ Hacker News Show HN + Product Hunt 新品 + Hugging Face Daily Papers**，
+生成一份中英双语 Markdown，帮你第一时间窥见 AI 行业趋势、给自己的 vibe coding 找灵感。
 
-> 数据线说明：X 推文 / 播客复用 [Zara Zhang 的 follow-builders](https://github.com/zarazhangrui/follow-builders)
-> 公开中心 feed；GitHub 三路为本 skill 自研抓取。**全程无需任何 API key。**
+**两类核心目标**：
+- **① 有设计理念的 AI 框架/工具** → 看「🧠 前沿思路」「🌟 AI 新星」「🔥 Trending」「📄 HF Papers」
+- **② Vibe Coding 项目灵感** → 看「🛠️ Vibe Coding 灵感」「🚀 Product Hunt」「🟧 Show HN」
+
+> 数据线说明：
+> - X 推文 / 播客 / 博客复用 [Zara Zhang 的 follow-builders](https://github.com/zarazhangrui/follow-builders) 公开中心 feed
+> - GitHub 四路（前沿/Vibe/新星/Trending）+ Show HN / Product Hunt / HF Papers 为本 skill 自研抓取
+> - **全程无需任何 API key。**
+
+> ⚠️ 关于"信息一致性"：资讯类内容是**活数据**——同一天、同样的源，不同人跑结果一致；
+> 但隔天再跑内容会刷新（这正是它的价值）。所以"装了就和你拿到一样的信息"成立于"同一天同源"，
+> 而非"永远复现某一天的快照"。要留存某天结果，请保存生成的 `YYYY-MM-DD.md` 文件本身。
 
 ---
 
@@ -86,13 +97,14 @@ AI 会按 `SKILL.md` 里的【整理规则】实时生成。
 
 ```
 daily-ai-digest/
-├── SKILL.md              # skill 入口：触发词 + 整理规则 + 前沿思路总结方案
+├── SKILL.md              # skill 入口：触发词 + 整理规则 + 前沿/Vibe 总结方案
 ├── README.md             # 本文件：安装与使用
 ├── config.example.json   # 配置示例（输出目录、时区）
 └── scripts/
     ├── prepare-digest.js # 拉 follow-builders 中心 feed（X/播客/博客），无 key
-    ├── fetch-github.js   # 抓 GitHub 三路（前沿/新星/Trending），匿名无 key
-    └── build-daily-md.js # 合并两路数据 + 🆕 去重 + 组装当天 md
+    ├── fetch-github.js   # 抓 GitHub 四路（前沿/Vibe/新星/Trending），匿名无 key
+    ├── fetch-extra.js    # 抓 Show HN（HN Algolia API）/ Product Hunt（Atom）/ HF Papers，无 key
+    └── build-daily-md.js # 合并三路数据 + 🆕 去重 + 组装当天 md
 ```
 
 ---
@@ -102,10 +114,15 @@ daily-ai-digest/
 | 板块 | 内容 | 更新频率 |
 |---|---|---|
 | X / Twitter | AI builder 新推文 | 每天 |
+| Official Blogs 官方博客 | AI 公司工程博客新文 | 有新文才有 |
 | Podcasts 播客 | 顶级 AI 播客新单集 + 字幕摘要 | 有新单集才有 |
-| 🧠 前沿思路 | 记忆 / 知识图谱 / 第二大脑 / 自进化 等新范式 | 慢（90 天窗口） |
+| 🧠 前沿思路 | 记忆 / 知识图谱 / 第二大脑 / 自进化 等新范式（目标①） | 慢（90 天窗口） |
+| 🛠️ Vibe Coding 灵感 | 独立开发者成品型小项目 / boilerplate / AI 套壳（目标②） | 30 天窗口滚动 |
 | 🌟 AI 新星 | 近 7 天创建的 AI 项目（star 排序） | 每天滚动 |
 | 🔥 GitHub Trending | 当日趋势榜里的 AI 项目 | 每天 |
+| 🟧 Hacker News · Show HN | 开发者首发的小项目（点赞过线） | 每天 |
+| 🚀 Product Hunt | 当日上线新品（AI / 独立开发者作品） | 每天 |
+| 📄 HF Daily Papers | Hugging Face 当日精选论文 | 每天（需能访问 huggingface.co） |
 | 📈 趋势洞察 | 结合言论 + 热项的趋势点评 | 仅精读版有 |
 
 ---
@@ -115,6 +132,15 @@ daily-ai-digest/
 编辑 `scripts/fetch-github.js` 顶部：
 - `AI_TOPICS`：AI 新星关键词（默认 `llm / agent / rag / mcp / ai-agent / llmops`）
 - `FRONTIER_TOPICS`：前沿思路关键词（默认 `memory / knowledge-graph / second-brain / self-evolving / agent-memory / world-model`）
+- `VIBE_TOPICS`：Vibe Coding 关键词（默认 `vibe-coding / ai-app / saas-boilerplate / nextjs / side-project / indie-hacker`，30 天窗口 + star ≥ 30）
+
+编辑 `scripts/fetch-extra.js` 顶部：
+- `HN_MIN_POINTS`：Show HN 帖子点赞下限（默认 10）
+- `PRODUCT_HUNT_LIMIT` / `HF_PAPERS_LIMIT`：各源条数上限
+
+> 还想手动刷的高信噪比渠道（脚本抓不稳，建议收藏）见 `SKILL.md` 末尾的「手动渠道清单」：
+> star-history / trendshift、awesome 列表 commit、Latent Space / Simon Willison newsletter、
+> v0.dev / Cursor Directory / bolt.new gallery、Indie Hackers 等。
 
 ---
 
@@ -122,7 +148,9 @@ daily-ai-digest/
 
 - **偶发 403**：GitHub 匿名 Search API 有限流，个别关键词某次抓取可能报 403，脚本已容错（单个失败不影响其他），下次跑会恢复。
 - **🆕 标记没出现**：第一次跑时历史库为空，所有项都会标 🆕；第二天起只标新出现的。历史库在 `~/.daily-ai-digest/seen-history.json`。
-- **X/播客是空的**：可能是 follow-builders 中心 feed 暂时不可达，GitHub 板块不受影响。
+- **X/播客是空的**：可能是 follow-builders 中心 feed 暂时不可达，其他板块不受影响。该数据线依赖第三方仓库 [follow-builders](https://github.com/zarazhangrui/follow-builders) 存活，若其下线/改结构，这条线会失效，GitHub / Show HN / Product Hunt 三路不受影响。
+- **📄 HF Papers 板块空白**：Hugging Face Papers 需要能直连 `huggingface.co`。若你的网络无法访问该域名，此板块自动留空、不报错、不影响其他源；网络恢复后自动有数据。
+- **🛠️ Vibe / 🚀 Product Hunt / 🟧 Show HN 没内容**：当天确实没命中过线项目时会自动隐藏该板块（属正常）。可调低 `fetch-extra.js` 的 `HN_MIN_POINTS` 或 `fetch-github.js` 的 vibe star 阈值放宽。
 
 ---
 
